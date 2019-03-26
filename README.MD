@@ -23,7 +23,7 @@ Example: node index.js iPhone_Upload iPhone_Upload-modified
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the MIT License.
 
 ## Acknowledgments
 
