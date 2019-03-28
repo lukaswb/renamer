@@ -3,6 +3,7 @@ var path = require("path");
 const ExifImage = require("exif").ExifImage;
 const geocoder = require("local-reverse-geocoder");
 const mkdirp = require("mkdirp");
+var subfolder;
 
 // Initialize Geocoder
 geocoder.init({
@@ -32,8 +33,9 @@ console.log("Path: " + folderPath);
 if (process.argv[3]) {
   var targetFolder = process.argv[3];
 } else {
-  var folderSrc = folderPath.split("/");
-  var targetFolder = folderSrc[folderSrc.length - 1] + "-modified";
+
+  var targetFolder = folderPath + "-modified";
+  console.log("Writing files to " + targetFolder);
 
 }
 
@@ -82,6 +84,45 @@ function convertDMStoDD(dms) {
   }
 }
 
+// Create subfolder for each creation date
+function createTargetFolder(targetFolder) {
+  // Create Directory for renamed files
+  mkdirp(targetFolder, function (err) {
+    if (err) {
+      console.log(err);
+    }
+  });
+
+  // var subFolder = targetFolder + '/' + created;
+  // if (!fs.existsSync(subFolder)) {
+  //   mkdirp(subFolder, function (err) {
+  //     console.log(err);
+  //   });
+  // }
+}
+
+// Create subdirectories
+function createSubFolder(targetFolder, created) {
+  return new Promise(function (resolve, reject) {
+    subFolder = targetFolder + '/' + created;
+    mkdirp(subFolder, function (err, data) {
+      if (err) return reject(err);
+      resolve(data);
+    });
+  });
+}
+
+function renameFile(file, filename) {
+
+  //Rename files
+  //TODO: Copy file instead of rename to preserve original file
+  fs.rename(file, filename, function (err) {
+    if (err) throw err;
+    console.log('renaming complete');
+  });
+
+};
+
 // Retrieve Exif Information for each file
 function readExif(file, index) {
   //Read Exif data for each file
@@ -118,6 +159,8 @@ function readExif(file, index) {
 
           }
 
+
+          // Retrieve image index from filename
           var fileIndex = file.substring(file.length - 10, file.length - 4).split(" ");
 
 
@@ -127,30 +170,26 @@ function readExif(file, index) {
             created = "YYYY-MM-DD";
           }
 
-          // Create Directory for renamed files
-          mkdirp(targetFolder, function (err) {
 
-            console.log(err)
+
+          // Create  target folder + subfolders
+          createTargetFolder(targetFolder);
+
+          createSubFolder(targetFolder, created).then(function () {
+
+            console.log("Subfolder " + subFolder + " created");
+
+            // Set filename
+            var filename = subFolder + '/' + created + " " + city + " " + fileIndex[1] + ".jpg";
+            imageDest.push(filename);
+
+            console.log("Rename " + file + " -> " + filename);
+
+            renameFile(file, filename);
           });
 
 
-          // Create subfolder for each creation date
-          var subFolder = targetFolder + '/' + created;
-          if (!fs.existsSync(subFolder)) {
-            mkdirp(subFolder, function (err) {
-              console.log(err);
-            });
-          }
 
-          // Set filename
-          var filename = subFolder + '/' + created + " " + city + " " + fileIndex[1] + ".jpg";
-          imageDest.push(filename);
-
-          //Rename files
-          fs.rename(file, filename, function (err) {
-            if (err) throw err;
-            console.log('renamed complete');
-          });
 
         }
       }
@@ -164,6 +203,6 @@ function readExif(file, index) {
 console.log("Found " + imageSrc.length + " files in " + folderPath);
 
 imageSrc.forEach(function (img, index) {
-  console.log(img);
+  console.log('File: ' + img);
   readExif(img, index);
 });
