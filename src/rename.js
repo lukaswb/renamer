@@ -25,6 +25,12 @@ fileHandler.readFiles().then(images => {
 
 
 function renameFile(file, filename) {
+
+
+  fileHandler.createTargetFolders(filename.substring(fileHandler.getTarget().length + 1, fileHandler.getTarget().length + 11));
+
+  console.log("Created folder " + filename.substring(fileHandler.getTarget().length + 1, fileHandler.getTarget().length + 11));
+
   //Rename files
   //TODO: Copy file instead of rename to preserve original file
   fs.rename(file, filename, function (err) {
@@ -139,7 +145,7 @@ function readExif(file, index) {
 
           imageDest.push(filename);
 
-          fileHandler.createTargetFolders(created).then(resolve(imageDest));
+          resolve(imageDest);
 
         }
       }

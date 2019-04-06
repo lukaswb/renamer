@@ -4,6 +4,7 @@
 
 
 const fsPromises = require("fs").promises;
+const fs = require("fs");
 const debug = require('debug')('dev');
 const cliOptions = require("./cli-options");
 const path = require("path");
@@ -66,13 +67,23 @@ exports.getTarget = function () {
 // ────────────────────────────────────────────────────────────────────────────────
 // CREATE TARGET FOLDERS
 // ────────────────────────────────────────────────────────────────────────────────
+// exports.createTargetFolders = function (created) {
+
+
+//  let subFolder = targetFolderPath + "/" + created;
+//  return fsPromises.mkdir(subFolder, {
+//   recursive: true,
+//   mode: 0o775
+//  });
+// };
+
 exports.createTargetFolders = function (created) {
 
- return new Promise(function (resolve, reject) {
-  let subFolder = targetFolderPath + "/" + created;
-  fsPromises.mkdir(subFolder, {
-   recursive: true,
-   mode: 0o775
-  });
+
+ let subFolder = targetFolderPath + "/" + created;
+ fs.mkdirSync(subFolder, {
+  recursive: true,
+  mode: 0o775
  });
+
 };
