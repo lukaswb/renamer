@@ -1,11 +1,38 @@
+// ────────────────────────────────────────────────────────────────────────────────
+// IMPORTS
+// ────────────────────────────────────────────────────────────────────────────────
+
+const fsPromises = require("fs").promises;
 const fs = require("fs");
 var path = require("path");
 const ExifImage = require("exif").ExifImage;
 const geocoder = require("local-reverse-geocoder");
 const mkdirp = require("mkdirp");
-var subfolder;
+const params = require("./parameter");
+const debug = require('debug')('dev');
 
+
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Global Variables
+// ────────────────────────────────────────────────────────────────────────────────
+
+// Source Folder
+var sourceFolderPath;
+var targetFolderPath;
+// Destination Folder
+
+
+// SubFolder
+var subFolder;
+// Data Array for File Storage (Source & Destination)
+var imageSrc = [];
+var imageDest = [];
+
+// ────────────────────────────────────────────────────────────────────────────────
 // Initialize Geocoder
+// ────────────────────────────────────────────────────────────────────────────────
+
 geocoder.init({
     load: {
       admin1: true,
@@ -19,30 +46,18 @@ geocoder.init({
   }
 );
 
-// Check if Console params has been provided, if not exit process
-if (process.argv.length <= 2) {
-  console.log("Usage: " + __filename + " Directory Path");
-  process.exit(-1);
-}
+// ────────────────────────────────────────────────────────────────────────────────
+// Console Params
+// ────────────────────────────────────────────────────────────────────────────────
 
-// Retrieve parameter for folder path from console
-var folderPath = process.argv[2];
-console.log("Path: " + folderPath);
-
-// Optional targetFolder name
-if (process.argv[3]) {
-  var targetFolder = process.argv[3];
-} else {
-
-  var targetFolder = folderPath + "-modified";
-  console.log("Writing files to " + targetFolder);
-
-}
+var input = params.checkInput();
+sourceFolderPath = input.sourceFolderPath;
+targetFolderPath = input.targetFolderPath;
 
 
-// Data Array for File Storage (Source & Destination)
-var imageSrc = [];
-var imageDest = [];
+// ────────────────────────────────────────────────────────────────────────────────
+// Handle GPS
+// ────────────────────────────────────────────────────────────────────────────────
 
 // Lookup Location for latDD and lngDD
 function getLocation(lat, lng) {
@@ -66,12 +81,6 @@ function getLocation(lat, lng) {
   }
 }
 
-// Read Directory and Store files in data Array
-fs.readdirSync(folderPath).forEach(file => {
-  // Store files in data array
-  imageSrc.push(path.resolve(folderPath + "/" + file));
-});
-
 // Convert Degree Minutes Seconds to Decimal Degree
 function convertDMStoDD(dms) {
   if (!dms) {
@@ -84,10 +93,24 @@ function convertDMStoDD(dms) {
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────
+// File System interaction
+// ────────────────────────────────────────────────────────────────────────────────
+
+// Read Directory and Store files in data Array
+function readFiles() {
+  fs.readdirSync(sourceFolderPath).forEach(file => {
+    // Store files in data array
+    imageSrc.push(path.resolve(sourceFolderPath + "/" + file));
+  });
+  // Output number of files in folder
+  console.log("Found " + imageSrc.length + " files in " + sourceFolderPath);
+}
+
 // Create subfolder for each creation date
-function createTargetFolder(targetFolder) {
+function createTargetFolder(targetFolderPath) {
   // Create Directory for renamed files
-  mkdirp(targetFolder, function (err) {
+  mkdirp(targetFolderPath, function (err) {
     if (err) {
       console.log(err);
     }
@@ -102,9 +125,9 @@ function createTargetFolder(targetFolder) {
 }
 
 // Create subdirectories
-function createSubFolder(targetFolder, created) {
+function createSubFolder(targetFolderPath, created) {
   return new Promise(function (resolve, reject) {
-    subFolder = targetFolder + '/' + created;
+    subFolder = targetFolderPath + "/" + created;
     mkdirp(subFolder, function (err, data) {
       if (err) return reject(err);
       resolve(data);
@@ -112,27 +135,41 @@ function createSubFolder(targetFolder, created) {
   });
 }
 
-function renameFile(file, filename) {
+// Create subdirectories
 
+function createSubFolderAsync(targetFolderPath, created) {
+  subFolder = targetFolderPath + "/" + created;
+  fsPromises.mkdir(subFolder, {
+    recursive: true,
+    mode: 0o775
+  });
+}
+
+
+
+function renameFile(file, filename) {
   //Rename files
   //TODO: Copy file instead of rename to preserve original file
   fs.rename(file, filename, function (err) {
     if (err) throw err;
-    console.log('renaming complete');
+    console.log("Rename " + file + " -> " + filename);
   });
+}
 
-};
+// ────────────────────────────────────────────────────────────────────────────────
+// EXIF Information to retrieve new filename
+// ────────────────────────────────────────────────────────────────────────────────
 
-// Retrieve Exif Information for each file
 function readExif(file, index) {
   //Read Exif data for each file
-  try {
+  return new Promise(function (resolve) {
     new ExifImage({
         image: file
       },
       function (error, exifData) {
         if (error) {
-          console.log("Error: " + error.message);
+          // TODO: Implement better error handling 
+          debug(error);
         } else {
           // Retrieve Creation Date
           var created = exifData.exif.CreateDate;
@@ -145,7 +182,6 @@ function readExif(file, index) {
           var lat = exifData.gps.GPSLatitude;
           var lng = exifData.gps.GPSLongitude;
 
-
           // Convert lat and lng into Decimal Degree Formatio
           var latDD = convertDMStoDD(lat);
           var lngDD = convertDMStoDD(lng);
@@ -156,53 +192,76 @@ function readExif(file, index) {
           if (!city) {
             // If city is not retrieved use original filename
             city = "";
-
           }
 
-
           // Retrieve image index from filename
-          var fileIndex = file.substring(file.length - 10, file.length - 4).split(" ");
-
-
+          var fileIndex = file
+            .substring(file.length - 10, file.length - 4)
+            .split(" ");
 
           // If created date is not retrieved use placeholder
           if (!created) {
             created = "YYYY-MM-DD";
           }
 
+          // If image index is not defines use array index instead
+          if (!fileIndex[1]) {
+            fileIndex[1] = index;
+          }
+
+          // Set filename
+          var filename =
+            created +
+            "/" +
+            created +
+            " " +
+            city +
+            " " +
+            fileIndex[1] +
+            ".jpg";
+          imageDest.push(filename);
+
+          //createSubFolder(targetFolderPath, created);
+
+          subFolder = targetFolderPath + "/" + created;
+          fsPromises.mkdir(subFolder, {
+            recursive: true,
+            mode: 0o775
+          }).then(console.log("Subfolder " + subFolder + "has been created."));
+
+          //.then(renameFile(file, filename));
+
+          resolve();
 
 
-          // Create  target folder + subfolders
-          createTargetFolder(targetFolder);
 
-          createSubFolder(targetFolder, created).then(function () {
 
-            console.log("Subfolder " + subFolder + " created");
 
-            // Set filename
-            var filename = subFolder + '/' + created + " " + city + " " + fileIndex[1] + ".jpg";
-            imageDest.push(filename);
-
-            console.log("Rename " + file + " -> " + filename);
-
-            renameFile(file, filename);
-          });
 
 
 
 
         }
+
       }
     );
-  } catch (error) {
-    console.log("Error: " + error.message);
-  }
+
+  });
 }
 
-// Output number of files in folder
-console.log("Found " + imageSrc.length + " files in " + folderPath);
+
+
+// ────────────────────────────────────────────────────────────────────────────────
+// RUN renaming for input folder
+// ────────────────────────────────────────────────────────────────────────────────
+
+// Create  target folder
+readFiles();
+createTargetFolder(targetFolderPath);
 
 imageSrc.forEach(function (img, index) {
-  console.log('File: ' + img);
-  readExif(img, index);
+  console.log("File: " + img);
+  readExif(img, index).then(debug("file: " + imageDest[index]));
+
+  //renameFile(img, imageDest[index])
 });
